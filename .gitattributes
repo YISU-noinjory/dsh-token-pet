@@ -1,0 +1,16 @@
+# 统一换行符。
+#
+# 仓库里一律存 LF，检出时也用 LF：这样 Windows / macOS / Linux 的协作者
+# 之间不会因为换行差异产生"整个文件都变了"的 diff。
+* text=auto eol=lf
+
+# 二进制：禁止任何换行转换与文本 diff。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.node binary

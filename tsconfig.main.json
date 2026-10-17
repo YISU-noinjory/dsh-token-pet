@@ -1,0 +1,24 @@
+{
+  "//": "主进程与数据层编译配置：产出 CommonJS。",
+  "//2": "preload 不在这里编译——沙箱 preload 无法 require 本地文件，必须由 vite.preload.config.ts 打包。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": false,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": true,
+    "declaration": false,
+    "types": ["node"]
+  },
+  "include": ["src/main/**/*.ts", "src/data/**/*.ts", "src/shared/**/*.ts"]
+}

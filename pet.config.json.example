@@ -1,0 +1,9 @@
+{
+  "pollIntervalMs": 60000,
+  "windowSize": 220,
+  "alwaysOnTop": true,
+  "clickThrough": false,
+  "lowBalanceThreshold": 5,
+  "warnBalanceThreshold": 20,
+  "disableHardwareAcceleration": false
+}

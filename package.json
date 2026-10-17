@@ -1,0 +1,65 @@
+{
+  "name": "dsh-token-pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "基于 DeepSeek Harness 的桌面宠物：Q弹宠物 + DeepSeek API Token 余额实时显示",
+  "license": "MIT",
+  "main": "dist/main/index.js",
+  "exports": {
+    ".": "./dist/main/index.js",
+    "./dsh-plugin": "./dist/dsh/plugin.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/main",
+    "dist/preload",
+    "dist/renderer",
+    "dist/dsh",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:dsh": "tsc -p tsconfig.dsh.json --noEmit",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:preload": "vite build -c vite.preload.config.ts",
+    "build:renderer": "vite build",
+    "build:dsh": "vite build -c vite.dsh.config.ts",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer && npm run build:dsh",
+    "dev": "npm run build && electron .",
+    "start": "npm run build && electron .",
+    "restart": "taskkill /IM electron.exe /F >nul 2>&1 & npm run build && electron .",
+    "watch": "tsc -p tsconfig.main.json --watch",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

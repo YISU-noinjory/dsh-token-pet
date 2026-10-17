@@ -1,0 +1,23 @@
+# dsh-token-pet bundle patch.
+#
+# DSH 把每个 bundle 的补丁作为一层叠加到 profile 上。这里只有一条 insert：
+# 往组合树里插一行 `token-pet`。
+#
+# 行的 `name` 是模块标识符，由 Cordis 加载器解析。`dsh-token-pet/dsh-plugin`
+# 走的是本包 package.json 的 exports["./dsh-plugin"]，指向打包好的 ESM 入口。
+#
+# `config` 会被本插件的 `Config`（schemastery）校验，字段与
+# `src/dsh/plugin.ts` 里的 PluginConfig 一一对应。
+#
+# 要改行为，推荐不要改这里——这是 bundle 自带的默认层。在 profile 的
+# cordis.patch.yml 里按 id 覆盖，或者用 Web 侧栏的 Plugins 页面切换，
+# 两者的优先级都在 bundle 层之上，升级本包时也不会被覆盖。
+
+- insert:
+    - id: token-pet
+      name: 'dsh-token-pet/dsh-plugin'
+      config:
+        # 模型可能连续追问余额，30 秒内的重复查询直接走缓存。
+        toolCacheTtlMs: 30000
+        # 关掉即不再向模型暴露 pet_balance 工具（本插件目前只有这一个能力）。
+        registerTool: true

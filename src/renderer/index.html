@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      内容安全策略。
+        - default-src 'none'：默认什么都不许，再逐项开口子。
+        - style-src 需要 'unsafe-inline'：Vite 在开发模式下把 CSS 以内联 <style> 注入。
+        - img-src 里的 pet-image: 是自定义协议，宠物图片由主进程通过它投递。
+          这里显式列出而不是给协议开 bypassCSP：让"允许什么"留在策略里可见。
+        - connect-src 含 ws:：为 Vite 开发服务器的 HMR 留通道；生产构建不依赖它。
+        - script-src 'self'：不允许任何内联脚本。余额数字来自网络，
+          即便将来某个字段被投毒注入成 HTML，也无法执行脚本。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pet-image:; font-src 'self'; connect-src 'self' ws:"
+    />
+    <title>Token Pet</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!--
+      stage：整块窗口区域。pointer-events 为 none，真正的点击目标只有 .pet-body
+      与 .pet-toolbar 上的按钮。
+    -->
+    <div class="pet-stage" id="stage" data-mood="unknown" data-motion="resting" data-has-photo="false" data-clip="none">
+      <!--
+        变换分层（三层各司其职，永不互相覆盖）：
+          .pet-body   ← JS 写 transform（滞后 / 挤压 / 倾斜）
+          .pet-inner  ← CSS keyframes 做呼吸
+          .pet-photo  ← 只负责 object-fit，不参与任何变换
+        自定义图片放在最内层，于是"Q弹作用于外层容器"是结构上保证的，
+        而不是靠约定。
+      -->
+      <div class="pet-body" id="pet">
+        <div class="pet-inner">
+          <!-- 内置宠物：纯 CSS 画出来的软糖。有自定义图片时整体隐藏。 -->
+          <div class="pet-face">
+            <span class="pet-ear pet-ear--left"></span>
+            <span class="pet-ear pet-ear--right"></span>
+            <span class="pet-eye pet-eye--left"></span>
+            <span class="pet-eye pet-eye--right"></span>
+            <span class="pet-cheek pet-cheek--left"></span>
+            <span class="pet-cheek pet-cheek--right"></span>
+            <span class="pet-mouth"></span>
+          </div>
+
+          <!--
+            自定义图片。src 由渲染进程从 pet-image:// 协议取，
+            渲染进程始终拿不到真实文件路径。
+            draggable="false" 很重要：否则按住图片会触发浏览器原生的
+            "拖拽图片"行为，把宠物从窗口里拖出去一个半透明幽灵。
+          -->
+          <img class="pet-photo" id="pet-photo" alt="" draggable="false" decoding="async" />
+        </div>
+      </div>
+
+      <!--
+        悬停工具栏。放在 .pet-body 之外，因此不会被 Q弹的 transform 拉扯。
+        显隐与 pointer-events 由 main.ts 的指针处理统一控制：
+        指针在宠物上或已经在工具栏上时可见。
+      -->
+      <div class="pet-toolbar" id="pet-toolbar">
+        <button class="pet-toolbar__button" id="pet-image-pick" type="button" title="导入自定义宠物图片">
+          换图
+        </button>
+        <button class="pet-toolbar__button" id="pet-image-reset" type="button" title="恢复内置宠物">
+          默认
+        </button>
+      </div>
+
+      <!-- 余额徽章悬浮在宠物下方，本身不参与物理形变。 -->
+      <div class="balance-badge" id="badge" data-tone="loading">
+        <span class="balance-badge__dot" id="badge-status" data-tone="loading"></span>
+        <span class="balance-badge__amount" id="badge-amount">读取中</span>
+      </div>
+
+      <!-- 选图被拒绝时的提示气泡。aria-live 让读屏软件也能播报。 -->
+      <div class="pet-toast" id="pet-toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

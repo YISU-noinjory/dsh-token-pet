@@ -1,0 +1,15 @@
+{
+  "//": "DSH 插件入口的独立类型检查配置。",
+  "//2": "src/dsh 依赖 @deepseek-ai/cordis、dsh-tools、dsh-llm、dsh-credentials、schemastery 等 peer 依赖，",
+  "//3": "它们随 DSH 分发、不在本仓库的 node_modules 里，因此默认的 typecheck 会把它排除。",
+  "//4": "在已安装这些依赖的环境（或 DSH 源码工作区）中运行：npm run typecheck:dsh",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/dsh/**/*.ts", "src/data/**/*.ts", "src/shared/**/*.ts"],
+  "exclude": []
+}
