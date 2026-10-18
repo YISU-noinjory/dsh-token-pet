@@ -1,18 +1,19 @@
 # electron-builder 配置
 #
-# 用法：
-#   npm run dist       # 打包成安装包（release/ 目录）
-#   npm run dist:win   # 明确只打 Windows
-#   npm run pack       # 只生成未压缩的目录，用于快速验证打包结果
+# 常用命令：
+#   npm run build:win    # 打 Windows 包（安装版 + 便携版），产物在 release/
+#   npm run pack         # 只生成未压缩目录，快速验证打包结果对不对
+#   npm run dist         # 等同于 build:win
 #
-# 首次打包前必须先 `npm run build`——dist/ 是构建产物且被 .gitignore 排除，
-# scripts 里的 dist 命令已经串好了这一步。
+# 首次打包前必须先 `npm run build`——dist/ 是构建产物且被 .gitignore 排除。
+# 脚本里已经串好了这一步，直接用上面的命令即可。
 
 appId: com.dshtokenpet.app
 productName: DSH Token Pet
 
 directories:
   output: release
+  # 图标等打包资源放这里（不装进安装包，只在构建时使用）。
   buildResources: build
 
 # 只把运行时真正需要的东西塞进去。
@@ -26,20 +27,26 @@ files:
   - '!src/**/*'
   - '!scripts/**/*'
 
-# 打进 asar 归档：既减少小文件数量，也避免用户误改内部资源。
-# 代价是 app.getAppPath() 指向归档内部、不可写，所以运行时配置要读
-# 可执行文件旁边的 pet.config.json（见 src/main/index.ts 的 readRawConfig）。
+# 打进 asar 归档：减少小文件数量，也避免用户误改内部资源。
+# 代价是 app.getAppPath() 指向归档内部、不可写，所以运行时读取的
+# pet.config.json 与 .env 都要找**可执行文件同级目录**
+#（见 src/main/index.ts 的 readRawConfig / credentialDirectory）。
 asar: true
 
 win:
   target:
+    # 安装版：有开始菜单/桌面快捷方式，可自选安装目录。
     - target: nsis
       arch:
         - x64
-  # 自定义图标放到 build/icon.ico（256×256）。
-  # 没有这个文件时 electron-builder 会退回默认的 Electron 图标并给出警告，
+    # 便携版：单个 exe，双击直接跑，不写注册表。
+    - target: portable
+      arch:
+        - x64
+  # 应用与任务栏图标。要求 build/icon.ico。
+  # 没有这个文件时 electron-builder 会退回默认 Electron 图标并给出警告，
   # 不影响打包成功。
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  icon: build/icon.ico
 
 nsis:
   oneClick: false
@@ -50,3 +57,8 @@ nsis:
   shortcutName: DSH Token Pet
   # 卸载时保留 %APPDATA% 下的用户数据（宠物图片、设置、日志）。
   deleteAppDataOnUninstall: false
+  # 两个目标必须分开命名，否则会在 release/ 里撞成同一个文件名。
+  artifactName: ${productName}-${version}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

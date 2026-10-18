@@ -214,7 +214,7 @@ async function bootstrap(): Promise<void> {
   poller = new BalancePoller({
     client: new BalanceClient({ endpoint: resolveEndpoint() }),
     // 每次请求前重新解析凭证：用户补上 .env 或换 Key 后无需重启。
-    credentials: CredentialChain.default(app.getAppPath()),
+    credentials: CredentialChain.default(credentialDirectory()),
     intervalMs: settings.pollIntervalMs,
     onState: (state: BalanceState) => window.send(EVENT_CHANNELS.balanceState, state),
     log: (message) => console.warn(message),
@@ -226,7 +226,7 @@ async function bootstrap(): Promise<void> {
   // 复用与余额轮询同一套凭据解析顺序（显式 → 环境变量 → .env），
   // 不为抽签单独再实现一遍"Key 从哪来"。
   fortuneOracle = new FortuneOracle({
-    credentials: CredentialChain.default(app.getAppPath()),
+    credentials: CredentialChain.default(credentialDirectory()),
     // 与余额接口一样允许指向本地 mock，便于离线开发与测试。
     ...(process.env.DSH_PET_AI_ENDPOINT ? { endpoint: process.env.DSH_PET_AI_ENDPOINT } : {}),
   })
@@ -629,7 +629,7 @@ function restartPoller(intervalMs: number): void {
   poller.stop()
   poller = new BalancePoller({
     client: new BalanceClient({ endpoint: resolveEndpoint() }),
-    credentials: CredentialChain.default(app.getAppPath()),
+    credentials: CredentialChain.default(credentialDirectory()),
     intervalMs,
     onState: (state: BalanceState) => window.send(EVENT_CHANNELS.balanceState, state),
     log: (message) => console.warn(message),
@@ -645,6 +645,21 @@ function restartPoller(intervalMs: number): void {
  */
 function resolveEndpoint(): string {
   return process.env.DSH_PET_BALANCE_ENDPOINT ?? BALANCE_ENDPOINT
+}
+
+/**
+ * `.env` 的查找目录。
+ *
+ * 开发时是项目根目录（`app.getAppPath()`）。但**打包之后** `getAppPath()` 指向
+ * `resources/app.asar`——归档内部，用户既改不到也放不进去，`.env` 会静默失效，
+ * 表现就是"打包版永远说没配 Key，开发版却正常"。
+ *
+ * 所以打包版返回**可执行文件所在目录**：用户把 `.env` 放在 exe 旁边即可生效。
+ *
+ * @returns 用于查找 `.env` 的目录。
+ */
+function credentialDirectory(): string {
+  return app.isPackaged ? dirname(app.getPath('exe')) : app.getAppPath()
 }
 
 /**

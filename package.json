@@ -37,8 +37,9 @@
     "restart": "taskkill /IM electron.exe /F >nul 2>&1 & npm run build && electron .",
     "watch": "tsc -p tsconfig.main.json --watch",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "build:win": "npm run build && electron-builder --win --x64",
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:win": "npm run build && electron-builder --win --x64"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",

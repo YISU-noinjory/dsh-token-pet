@@ -44,6 +44,7 @@ temp/
 .crops/
 .profile-backup/
 .electron-cache/
+.builder-cache/
 .npm-cache/
 
 # ---------------------------------------------------------------------------
