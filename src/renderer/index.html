@@ -80,6 +80,28 @@
       <div class="pet-toast" id="pet-toast" role="status" aria-live="polite"></div>
     </div>
 
+    <!--
+      赛博签筒卡片。
+
+      和宠物同处一个页面，靠 `?mode=fortune` 切换（见 main.ts）：
+      卡片窗口加载的是同一个 index.html，只是 `data-mode=fortune` 时
+      隐藏宠物、只显示这张卡。这样不必新增一个 Vite 入口，
+      preload 与 CSP 也完全复用。
+
+      默认 `display: none`，由 CSS 在 fortune 模式下打开。
+    -->
+    <div class="fortune-card" id="fortune-card" role="dialog" aria-live="polite">
+      <div class="fortune-card__glow"></div>
+      <div class="fortune-card__header">
+        <span class="fortune-card__seal" id="fortune-number">第 1 卦</span>
+        <span class="fortune-card__title" id="fortune-name">乾为天</span>
+      </div>
+      <p class="fortune-card__judgment" id="fortune-judgment">元亨利贞。</p>
+      <p class="fortune-card__reading" id="fortune-reading">正在请示赛博先生…</p>
+      <p class="fortune-card__notice" id="fortune-notice" hidden></p>
+      <button class="fortune-card__button" id="fortune-close" type="button">收下吉言</button>
+    </div>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

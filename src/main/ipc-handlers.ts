@@ -12,7 +12,13 @@
 
 import { ipcMain } from 'electron'
 import { INVOKE_CHANNELS } from '../shared/ipc'
-import type { BalanceState, PetImageSelectResult, PetImageView, PetSettings } from '../shared/types'
+import type {
+  BalanceState,
+  FortuneReading,
+  PetImageSelectResult,
+  PetImageView,
+  PetSettings,
+} from '../shared/types'
 import type { BalancePoller } from '../data/balance-poller'
 import type { PetImageStore } from './pet-image'
 import type { PetWindow } from './pet-window'
@@ -35,6 +41,17 @@ export interface IpcHandlersDeps {
    * （这里的 IPC 与 index.ts 的原生右键菜单），广播逻辑只能有一份。
    */
   readonly publishPetImage: (view: PetImageView) => void
+  /**
+   * 抽一签。
+   *
+   * 由 index.ts 提供：它持有 FortuneOracle，也负责创建签筒窗口。
+   * 处理器只管转发，不碰窗口生命周期。
+   */
+  readonly drawFortune: () => Promise<FortuneReading>
+  /** 读当前这一签；没有时为 `null`。 */
+  readonly getFortune: () => FortuneReading | null
+  /** 关闭签筒窗口。 */
+  readonly closeFortune: () => void
   /** 请求退出应用。 */
   readonly quit: () => void
 }
@@ -47,8 +64,19 @@ export interface IpcHandlersDeps {
  *          重复注册会抛异常，必须先移除）。
  */
 export function registerIpcHandlers(deps: IpcHandlersDeps): () => void {
-  const { petWindow, physics, poller, petImageStore, getSettings, patchSettings, publishPetImage, quit } =
-    deps
+  const {
+    petWindow,
+    physics,
+    poller,
+    petImageStore,
+    getSettings,
+    patchSettings,
+    publishPetImage,
+    drawFortune,
+    getFortune,
+    closeFortune,
+    quit,
+  } = deps
 
   ipcMain.handle(INVOKE_CHANNELS.balanceGet, (): BalanceState => poller.getState())
 
@@ -126,10 +154,17 @@ export function registerIpcHandlers(deps: IpcHandlersDeps): () => void {
     },
   )
 
+  ipcMain.handle(INVOKE_CHANNELS.fortuneDraw, async (): Promise<FortuneReading> => drawFortune())
+
+  ipcMain.handle(INVOKE_CHANNELS.fortuneCurrent, (): FortuneReading | null => getFortune())
+
+  ipcMain.handle(INVOKE_CHANNELS.fortuneClose, (): void => {
+    closeFortune()
+  })
+
   ipcMain.handle(INVOKE_CHANNELS.quit, (): void => {
     quit()
   })
-
   // 返回清理函数，逐一移除，避免热重载或窗口重建时重复注册。
   return () => {
     for (const channel of Object.values(INVOKE_CHANNELS)) {

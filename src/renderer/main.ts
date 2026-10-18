@@ -11,6 +11,8 @@ import type { PetBridge } from '../shared/ipc'
 import type { PetSettings } from '../shared/types'
 import { Pet } from './pet/pet'
 import { BalanceBadge } from './ui/balance-badge'
+import { bootstrapFortuneCard } from './ui/fortune-card'
+import { installFortuneTrigger } from './ui/fortune-trigger'
 import { PetImagePicker } from './ui/pet-image-picker'
 import { PetResizer } from './ui/pet-resizer'
 
@@ -30,6 +32,20 @@ function requireElement<T extends HTMLElement>(id: string): T {
 /** 启动渲染进程。 */
 function bootstrap(): void {
   const bridge: PetBridge = window.petBridge
+
+  /*
+   * 同一个页面，两种形态。
+   *
+   * 主进程创建签筒窗口时给页面加 `?mode=fortune`，这里据此分流。这样做省掉了
+   * 一个独立的 Vite 入口：preload、CSP、构建配置全部复用。
+   *
+   * 必须**在查询任何宠物元素之前**分流，否则卡片窗口会因为找不到 `.pet-body`
+   * 而抛错。
+   */
+  if (new URLSearchParams(window.location.search).get('mode') === 'fortune') {
+    bootstrapFortuneCard(bridge)
+    return
+  }
 
   const stage = requireElement<HTMLDivElement>('stage')
   const petBody = requireElement<HTMLDivElement>('pet')
@@ -60,6 +76,16 @@ function bootstrap(): void {
     toast: requireElement<HTMLDivElement>('pet-toast'),
   })
   void imagePicker.start()
+
+  /* --- 每日赛博抽签 --- */
+
+  // 菜单在主进程，判定在今天抽没抽过在这里，真正的抽签再回主进程。
+  const disposeFortuneTrigger = installFortuneTrigger({
+    bridge,
+    pet,
+    // 复用选图那套气泡：它已经处理好了定时器与显隐。
+    notify: (message) => imagePicker.notify(message),
+  })
 
   /**
    * 当前设置。
@@ -103,6 +129,7 @@ function bootstrap(): void {
   window.addEventListener('beforeunload', () => {
     disposeHitTest()
     for (const unsubscribe of unsubscribers) unsubscribe()
+    disposeFortuneTrigger()
     pet.dispose()
     badge.dispose()
     imagePicker.dispose()

@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path'
 import { app, dialog, Menu, protocol, screen, type BrowserWindow } from 'electron'
 import { EVENT_CHANNELS } from '../shared/ipc'
 import { DEFAULT_SETTINGS, PET_SIZE_LIMITS } from '../shared/config'
-import type { BalanceState, PetSettings, PetImageView } from '../shared/types'
+import type { BalanceState, FortuneReading, PetSettings, PetImageView } from '../shared/types'
 import { BalanceClient, BALANCE_ENDPOINT } from '../data/balance-client'
 import { BalancePoller } from '../data/balance-poller'
 import { CredentialChain } from '../data/credentials'
@@ -30,6 +30,8 @@ import { PetTray } from './tray'
 import { teeConsoleToFile } from './log-file'
 import { loadPersistedSettings, savePersistedSettings } from './settings-store'
 import { redactValue } from '../shared/redact'
+import { FortuneOracle } from './fortune'
+import { FortuneWindow } from './fortune-window'
 import {
   PET_IMAGE_SCHEME,
   PET_IMAGE_SCHEME_PRIVILEGES,
@@ -46,6 +48,12 @@ let tray: PetTray | undefined
 /** 显示器变化处理函数，退出时移除监听用。 */
 let displayChangeHandler: (() => void) | undefined
 let disposeIpc: (() => void) | undefined
+/** 抽签器：选卦 + 调 AI。启动时创建一次，凭据每次抽签现取。 */
+let fortuneOracle: FortuneOracle | undefined
+/** 签筒卡片窗口。每次抽签重建，关闭即销毁。 */
+let fortuneWindow: FortuneWindow | undefined
+/** 当前这一签。卡片窗口加载后主动来取，避免事件早于监听的竞态。 */
+let currentFortune: FortuneReading | null = null
 let settings: PetSettings = DEFAULT_SETTINGS
 
 /**
@@ -213,6 +221,16 @@ async function bootstrap(): Promise<void> {
   })
   poller.start()
 
+  /* --- 每日赛博抽签 --- */
+
+  // 复用与余额轮询同一套凭据解析顺序（显式 → 环境变量 → .env），
+  // 不为抽签单独再实现一遍"Key 从哪来"。
+  fortuneOracle = new FortuneOracle({
+    credentials: CredentialChain.default(app.getAppPath()),
+    // 与余额接口一样允许指向本地 mock，便于离线开发与测试。
+    ...(process.env.DSH_PET_AI_ENDPOINT ? { endpoint: process.env.DSH_PET_AI_ENDPOINT } : {}),
+  })
+
   /* --- IPC --- */
 
   disposeIpc = registerIpcHandlers({
@@ -223,6 +241,9 @@ async function bootstrap(): Promise<void> {
     getSettings: () => settings,
     patchSettings: applySettings,
     publishPetImage,
+    drawFortune,
+    getFortune,
+    closeFortune,
     quit: () => app.quit(),
   })
 
@@ -240,6 +261,7 @@ async function bootstrap(): Promise<void> {
     refreshBalance: () => {
       void poller?.refresh()
     },
+    requestFortune,
     quit: () => app.quit(),
   })
 
@@ -356,6 +378,11 @@ app.on('before-quit', () => {
   tray?.destroy()
   tray = undefined
 
+  // 签筒是独立窗口，不会随宠物窗口一起消失。
+  fortuneWindow?.close()
+  fortuneWindow = undefined
+  fortuneOracle = undefined
+
   if (displayChangeHandler) {
     screen.removeListener('display-metrics-changed', displayChangeHandler)
     screen.removeListener('display-added', displayChangeHandler)
@@ -422,6 +449,13 @@ function registerContextMenu(window: BrowserWindow): void {
         enabled: view?.hasImage === true,
         click: () => {
           void resetPetImage()
+        },
+      },
+      { type: 'separator' },
+      {
+        label: '今日抽签',
+        click: () => {
+          requestFortune()
         },
       },
       { type: 'separator' },
@@ -508,6 +542,77 @@ async function toggleCutout(show: boolean): Promise<void> {
   const store = petImageStore
   if (!store) return
   publishPetImage(await store.setShowCutout(show))
+}
+
+/* ------------------------------------------------------------------ *
+ * 每日赛博抽签
+ * ------------------------------------------------------------------ */
+
+/**
+ * 请求开签。
+ *
+ * 主进程**不做**"今天抽过没有"的判断——那个判定在渲染进程的 localStorage 里。
+ * 这里只负责告诉宠物"有人点了抽签"，由它决定是提示还是真的去抽。
+ */
+function requestFortune(): void {
+  petWindow?.send(EVENT_CHANNELS.fortuneSignal, { action: 'open' })
+}
+
+/** 把抽签信号发给宠物窗口。 */
+function sendFortuneSignal(action: 'open' | 'closed'): void {
+  petWindow?.send(EVENT_CHANNELS.fortuneSignal, { action })
+}
+
+/**
+ * 抽一签并弹出签筒卡片。
+ *
+ * @returns 抽签结果（供渲染进程确认成功后再记录日期）。
+ */
+async function drawFortune(): Promise<FortuneReading> {
+  const oracle = fortuneOracle
+  if (!oracle) throw new Error('抽签器尚未初始化')
+
+  const reading = await oracle.draw()
+  currentFortune = reading
+
+  // 每次抽签都重建窗口：复用旧窗口要额外处理"内容已变"的时序，
+  // 而这个操作一天只发生一次，重建的代价可以忽略。
+  fortuneWindow?.close()
+  fortuneWindow = undefined
+
+  const pet = petWindow
+  if (pet) {
+    const card = FortuneWindow.create(
+      pet.getBounds(),
+      process.env.DSH_PET_DEV_SERVER,
+    )
+    fortuneWindow = card
+    card.browserWindow.once('closed', () => {
+      // 只有"当前这张卡"被关掉时才清空并通知宠物，避免旧窗口的
+      // closed 事件把新窗口的状态误清掉。
+      if (fortuneWindow !== card) return
+      fortuneWindow = undefined
+      sendFortuneSignal('closed')
+    })
+  }
+
+  return reading
+}
+
+/** 读当前这一签。 */
+function getFortune(): FortuneReading | null {
+  return currentFortune
+}
+
+/** 关闭签筒窗口。 */
+function closeFortune(): void {
+  const card = fortuneWindow
+  if (!card) return
+  fortuneWindow = undefined
+  card.close()
+  // 窗口已销毁时 'closed' 不会带着我们的引用回来，这里显式通知宠物，
+  // 保证"收下吉言"一定会得到一次 Q 弹反馈。
+  sendFortuneSignal('closed')
 }
 
 /** 恢复内置宠物（右键菜单入口）。 */

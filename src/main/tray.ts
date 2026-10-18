@@ -32,6 +32,13 @@ export interface PetTrayDeps {
   readonly patchSettings: (patch: Partial<PetSettings>) => PetSettings
   /** 立即刷新余额。 */
   readonly refreshBalance: () => void
+  /**
+   * 请求开签（今日抽签）。
+   *
+   * 只是发一个信号给宠物窗口——"今天抽过没有"由渲染进程判定，
+   * 托盘不关心这件事。
+   */
+  readonly requestFortune: () => void
   /** 退出应用。 */
   readonly quit: () => void
 }
@@ -80,7 +87,8 @@ export class PetTray {
    * 全局快捷键）。任何状态变化后调一次即可。
    */
   rebuildMenu(): void {
-    const { petWindow, getSettings, patchSettings, refreshBalance, quit } = this.#deps
+    const { petWindow, getSettings, patchSettings, refreshBalance, requestFortune, quit } =
+      this.#deps
     const settings = getSettings()
     const visible = petWindow.isVisible
 
@@ -106,6 +114,10 @@ export class PetTray {
       {
         label: '立即刷新余额',
         click: () => refreshBalance(),
+      },
+      {
+        label: '今日抽签',
+        click: () => requestFortune(),
       },
       { type: 'separator' },
       {

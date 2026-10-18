@@ -170,6 +170,18 @@ export class PetImagePicker {
   }
 
   /**
+   * 用宠物旁边的气泡提示一条消息。
+   *
+   * 这个方法存在只是因为**这个类持有那个气泡元素**。抽签之类的其他功能也
+   * 需要给用户一句短提示，与其各写一份定时器与样式操作，不如共用一处。
+   *
+   * @param message - 提示文案。
+   */
+  notify(message: string): void {
+    this.#showToast(message)
+  }
+
+  /**
    * 显示一条提示气泡。
    *
    * @param message - 面向用户的文案。

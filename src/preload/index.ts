@@ -25,6 +25,7 @@ import {
 } from '../shared/ipc'
 import type {
   BalanceState,
+  FortuneReading,
   PetImageClip,
   PetImageSelectResult,
   PetImageView,
@@ -43,6 +44,7 @@ const EVENT_CHANNEL_BY_NAME: Record<keyof PetEventMap, (typeof EVENT_CHANNELS)[k
   motionState: EVENT_CHANNELS.motionState,
   impact: EVENT_CHANNELS.impact,
   petImage: EVENT_CHANNELS.petImageChanged,
+  fortune: EVENT_CHANNELS.fortuneSignal,
 }
 
 /**
@@ -104,6 +106,11 @@ const bridge: PetBridge = {
     setCutout: (show: boolean): Promise<PetImageView> =>
       // 强制转成布尔：渲染进程给什么都不该变成别的类型。
       ipcRenderer.invoke(INVOKE_CHANNELS.petImageSetCutout, show === true),
+  },
+  fortune: {
+    draw: (): Promise<FortuneReading> => ipcRenderer.invoke(INVOKE_CHANNELS.fortuneDraw),
+    current: (): Promise<FortuneReading | null> => ipcRenderer.invoke(INVOKE_CHANNELS.fortuneCurrent),
+    close: (): Promise<void> => ipcRenderer.invoke(INVOKE_CHANNELS.fortuneClose),
   },
   app: {
     quit: (): Promise<void> => ipcRenderer.invoke(INVOKE_CHANNELS.quit),

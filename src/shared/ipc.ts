@@ -11,6 +11,8 @@
 
 import type {
   BalanceState,
+  FortuneReading,
+  FortuneSignal,
   MotionFrame,
   PetImageClip,
   PetImageSelectResult,
@@ -59,6 +61,12 @@ export const INVOKE_CHANNELS = {
   petImageSetClip: 'pet-image:set-clip',
   /** 在抠图版本与原图之间切换（原图始终保留）。 */
   petImageSetCutout: 'pet-image:set-cutout',
+  /** 抽一签；主进程负责选卦与调用 AI 解读。 */
+  fortuneDraw: 'fortune:draw',
+  /** 读当前这一签（签筒窗口加载后主动拉取，避免事件早于监听注册）。 */
+  fortuneCurrent: 'fortune:current',
+  /** 关闭签筒窗口。 */
+  fortuneClose: 'fortune:close',
   /** 退出应用。 */
   quit: 'app:quit',
 } as const
@@ -80,6 +88,13 @@ export const EVENT_CHANNELS = {
    * 菜单触发的那次换图，渲染进程只能通过这个事件知道。
    */
   petImageChanged: 'pet-image:changed',
+  /**
+   * 抽签信号：`open` 请求开签，`closed` 表示卡片已关（宠物据此弹一下）。
+   *
+   * 用一个频道带动作而不是开两个频道：两者是同一件事的两个阶段，
+   * 拆开会多一个频道名要维护，而收益为零。
+   */
+  fortuneSignal: 'fortune:signal',
 } as const
 
 /** 频道名的字面量联合类型，供调试与日志使用。 */
@@ -126,6 +141,7 @@ export interface PetEventMap {
   motionState: WindowMotionState
   impact: ImpactPayload
   petImage: PetImageView
+  fortune: FortuneSignal
 }
 
 /**
@@ -182,6 +198,20 @@ export interface PetBridge {
      * @param show - `true` 显示抠图；`false` 显示原图。原图永远保留，可反复切换。
      */
     setCutout(show: boolean): Promise<PetImageView>
+  }
+  /**
+   * 每日赛博抽签。
+   *
+   * 「今天抽过没有」由渲染进程用 localStorage 判定，所以这里只有"真正去抽"
+   * 和"读当前这一签"两个动作，没有"能不能抽"的查询。
+   */
+  readonly fortune: {
+    /** 抽一签。主进程选卦并调用 AI；AI 失败时返回兜底解读，不抛异常。 */
+    draw(): Promise<FortuneReading>
+    /** 读当前这一签（签筒窗口加载后调用）。没有时为 `null`。 */
+    current(): Promise<FortuneReading | null>
+    /** 关闭签筒窗口。 */
+    close(): Promise<void>
   }
   readonly app: {
     quit(): Promise<void>
