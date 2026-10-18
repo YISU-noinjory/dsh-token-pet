@@ -25,6 +25,8 @@ import {
 } from '../shared/ipc'
 import type {
   BalanceState,
+  CredentialSaveResult,
+  CredentialStatus,
   FortuneReading,
   PetImageClip,
   PetImageSelectResult,
@@ -112,10 +114,17 @@ const bridge: PetBridge = {
     current: (): Promise<FortuneReading | null> => ipcRenderer.invoke(INVOKE_CHANNELS.fortuneCurrent),
     close: (): Promise<void> => ipcRenderer.invoke(INVOKE_CHANNELS.fortuneClose),
   },
+  credential: {
+    status: (): Promise<CredentialStatus> => ipcRenderer.invoke(INVOKE_CHANNELS.credentialStatus),
+    set: (key: string): Promise<CredentialSaveResult> =>
+      // 只在边界上收敛成字符串；真正的校验（空值、长度）在主进程里做，
+      // 因为那才是决定"存不存"的地方。
+      ipcRenderer.invoke(INVOKE_CHANNELS.credentialSet, typeof key === 'string' ? key : ''),
+    clear: (): Promise<CredentialStatus> => ipcRenderer.invoke(INVOKE_CHANNELS.credentialClear),
+  },
   app: {
     quit: (): Promise<void> => ipcRenderer.invoke(INVOKE_CHANNELS.quit),
-  },
-  on: subscribe,
+  },  on: subscribe,
 }
 
 contextBridge.exposeInMainWorld('petBridge', bridge)

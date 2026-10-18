@@ -22,6 +22,8 @@ export interface ResolvedApiKey {
 export type CredentialOrigin =
   /** 调用方显式传入（测试或 `pet.config.json`）。 */
   | 'explicit'
+  /** 用户在应用内设置、经系统加密保存在本机。 */
+  | 'stored'
   /** 进程环境变量 `DEEPSEEK_API_KEY`。 */
   | 'env'
   /** 工作目录下的 `.env` 文件。 */
@@ -117,6 +119,26 @@ export interface BalanceChainLike {
   resolve(): Promise<ResolvedApiKey | undefined>
 }
 
+/**
+ * 应用内设置的 Key。
+ *
+ * 读取器由主进程注入，而不是在这里直接读文件：密钥的加解密依赖 Electron 的
+ * `safeStorage`（Windows 上走 DPAPI），一旦 import electron 这个模块就不能
+ * 脱离 Electron 单测了。注入一个 `() => Promise<string | undefined>` 就把
+ * 「怎么存」留在了主进程，这里只关心「有没有」。
+ *
+ * @param read - 读取并解密 Key 的函数。
+ */
+export function storedCredential(read: () => Promise<string | undefined>): CredentialProvider {
+  return {
+    origin: 'stored',
+    async resolve() {
+      const value = (await read())?.trim()
+      return value ? value : undefined
+    },
+  }
+}
+
 /** 按顺序尝试多个来源，返回第一个命中的结果。 */
 export class CredentialChain implements BalanceChainLike {
   readonly #providers: readonly CredentialProvider[]
@@ -141,13 +163,28 @@ export class CredentialChain implements BalanceChainLike {
     return undefined
   }
 
-  /** 构造默认解析链：显式 → 环境变量 → `.env`。 */
-  static default(directory: string, explicitKey?: string): CredentialChain {
+  /**
+   * 构造默认解析链：显式 → **应用内设置** → 环境变量 → `.env`。
+   *
+   * 应用内设置的排在环境变量**之前**：那是用户在界面里亲手输入、刚刚生效的
+   * 一次操作，理应压过机器上遗留的环境变量；否则用户会困惑"我明明在 App 里
+   * 设了新的，为什么还在用旧的、还在报 401"。
+   *
+   * @param directory - 查找 `.env` 的目录。
+   * @param explicitKey - 调用方直接给的 Key（测试用）。
+   * @param readStored - 读取应用内保存的 Key；不传则表示不支持该来源。
+   */
+  static default(
+    directory: string,
+    explicitKey?: string,
+    readStored?: () => Promise<string | undefined>,
+  ): CredentialChain {
     const providers: CredentialProvider[] = []
     if (explicitKey?.trim()) {
       const key = explicitKey.trim()
       providers.push({ origin: 'explicit', resolve: async () => key })
     }
+    if (readStored) providers.push(storedCredential(readStored))
     providers.push(envCredential(), dotenvCredential(directory))
     return new CredentialChain(providers)
   }

@@ -19,7 +19,14 @@ import { dirname, join } from 'node:path'
 import { app, dialog, Menu, protocol, screen, type BrowserWindow } from 'electron'
 import { EVENT_CHANNELS } from '../shared/ipc'
 import { DEFAULT_SETTINGS, PET_SIZE_LIMITS } from '../shared/config'
-import type { BalanceState, FortuneReading, PetSettings, PetImageView } from '../shared/types'
+import type {
+  BalanceState,
+  CredentialSaveResult,
+  CredentialStatus,
+  FortuneReading,
+  PetSettings,
+  PetImageView,
+} from '../shared/types'
 import { BalanceClient, BALANCE_ENDPOINT } from '../data/balance-client'
 import { BalancePoller } from '../data/balance-poller'
 import { CredentialChain } from '../data/credentials'
@@ -31,7 +38,8 @@ import { teeConsoleToFile } from './log-file'
 import { loadPersistedSettings, savePersistedSettings } from './settings-store'
 import { redactValue } from '../shared/redact'
 import { FortuneOracle } from './fortune'
-import { FortuneWindow } from './fortune-window'
+import { PopoverWindow } from './popover-window'
+import { CredentialStore } from './credential-store'
 import {
   PET_IMAGE_SCHEME,
   PET_IMAGE_SCHEME_PRIVILEGES,
@@ -51,10 +59,22 @@ let disposeIpc: (() => void) | undefined
 /** 抽签器：选卦 + 调 AI。启动时创建一次，凭据每次抽签现取。 */
 let fortuneOracle: FortuneOracle | undefined
 /** 签筒卡片窗口。每次抽签重建，关闭即销毁。 */
-let fortuneWindow: FortuneWindow | undefined
+let fortuneWindow: PopoverWindow | undefined
+/** 设置 API Key 的浮层窗口。 */
+let keyWindow: PopoverWindow | undefined
 /** 当前这一签。卡片窗口加载后主动来取，避免事件早于监听的竞态。 */
 let currentFortune: FortuneReading | null = null
+/** 应用内 API Key 的加密存储。 */
+let credentialStore: CredentialStore | undefined
 let settings: PetSettings = DEFAULT_SETTINGS
+
+/** 签筒窗口尺寸（DIP）。必须与渲染进程里 `.fortune-card` 的布局匹配。 */
+const FORTUNE_CARD_WIDTH = 320
+const FORTUNE_CARD_HEIGHT = 264
+
+/** 设置 Key 窗口尺寸（DIP）。 */
+const KEY_WINDOW_WIDTH = 348
+const KEY_WINDOW_HEIGHT = 244
 
 /**
  * 在 `app.whenReady()` **之前**读到的原始配置。
@@ -214,19 +234,24 @@ async function bootstrap(): Promise<void> {
   poller = new BalancePoller({
     client: new BalanceClient({ endpoint: resolveEndpoint() }),
     // 每次请求前重新解析凭证：用户补上 .env 或换 Key 后无需重启。
-    credentials: CredentialChain.default(credentialDirectory()),
+    credentials: createCredentialChain(),
     intervalMs: settings.pollIntervalMs,
     onState: (state: BalanceState) => window.send(EVENT_CHANNELS.balanceState, state),
     log: (message) => console.warn(message),
   })
   poller.start()
 
+  /* --- 应用内 API Key 存储 --- */
+
+  // 必须在创建凭据链之前就绪：凭据链每次解析都会来问它要 Key。
+  credentialStore = new CredentialStore()
+
   /* --- 每日赛博抽签 --- */
 
   // 复用与余额轮询同一套凭据解析顺序（显式 → 环境变量 → .env），
   // 不为抽签单独再实现一遍"Key 从哪来"。
   fortuneOracle = new FortuneOracle({
-    credentials: CredentialChain.default(credentialDirectory()),
+    credentials: createCredentialChain(),
     // 与余额接口一样允许指向本地 mock，便于离线开发与测试。
     ...(process.env.DSH_PET_AI_ENDPOINT ? { endpoint: process.env.DSH_PET_AI_ENDPOINT } : {}),
   })
@@ -244,6 +269,9 @@ async function bootstrap(): Promise<void> {
     drawFortune,
     getFortune,
     closeFortune,
+    getCredentialStatus,
+    saveCredential,
+    clearCredential,
     quit: () => app.quit(),
   })
 
@@ -262,6 +290,7 @@ async function bootstrap(): Promise<void> {
       void poller?.refresh()
     },
     requestFortune,
+    openKeyWindow,
     quit: () => app.quit(),
   })
 
@@ -381,6 +410,8 @@ app.on('before-quit', () => {
   // 签筒是独立窗口，不会随宠物窗口一起消失。
   fortuneWindow?.close()
   fortuneWindow = undefined
+  keyWindow?.close()
+  keyWindow = undefined
   fortuneOracle = undefined
 
   if (displayChangeHandler) {
@@ -456,6 +487,12 @@ function registerContextMenu(window: BrowserWindow): void {
         label: '今日抽签',
         click: () => {
           requestFortune()
+        },
+      },
+      {
+        label: '设置 API Key…',
+        click: () => {
+          openKeyWindow()
         },
       },
       { type: 'separator' },
@@ -582,10 +619,13 @@ async function drawFortune(): Promise<FortuneReading> {
 
   const pet = petWindow
   if (pet) {
-    const card = FortuneWindow.create(
-      pet.getBounds(),
-      process.env.DSH_PET_DEV_SERVER,
-    )
+    const card = PopoverWindow.create({
+      mode: 'fortune',
+      width: FORTUNE_CARD_WIDTH,
+      height: FORTUNE_CARD_HEIGHT,
+      anchor: pet.getBounds(),
+      ...(process.env.DSH_PET_DEV_SERVER ? { devServerUrl: process.env.DSH_PET_DEV_SERVER } : {}),
+    })
     fortuneWindow = card
     card.browserWindow.once('closed', () => {
       // 只有"当前这张卡"被关掉时才清空并通知宠物，避免旧窗口的
@@ -602,6 +642,84 @@ async function drawFortune(): Promise<FortuneReading> {
 /** 读当前这一签。 */
 function getFortune(): FortuneReading | null {
   return currentFortune
+}
+
+/* ------------------------------------------------------------------ *
+ * 应用内 API Key 设置
+ * ------------------------------------------------------------------ */
+
+/**
+ * 构造凭据链。
+ *
+ * 把「应用内加密保存的 Key」作为一环插进去，排在环境变量之前——
+ * 那是用户在界面里亲手输入、刚刚生效的一次操作，理应压过机器上遗留的环境变量。
+ */
+function createCredentialChain(): CredentialChain {
+  return CredentialChain.default(credentialDirectory(), undefined, async () =>
+    credentialStore?.read(),
+  )
+}
+
+/** 读应用内 Key 的状态。 */
+function getCredentialStatus(): CredentialStatus {
+  return credentialStore?.getStatus() ?? { hasKey: false, encryptionAvailable: false }
+}
+
+/**
+ * 保存应用内 Key。
+ *
+ * @param key - Key 明文。
+ * @returns 结果对象（不抛异常），失败原因直接展示给用户。
+ */
+function saveCredential(key: string): CredentialSaveResult {
+  const store = credentialStore
+  if (!store) {
+    return { ok: false, status: getCredentialStatus(), error: '存储尚未就绪，请重启应用后重试' }
+  }
+  try {
+    store.save(key)
+    console.log('[dsh-token-pet] 已更新应用内 API Key（加密保存）')
+    return { ok: true, status: store.getStatus() }
+  } catch (cause) {
+    // 原因可能是"系统不支持安全存储"或写盘失败，都原样转给界面。
+    const message = cause instanceof Error ? cause.message : String(cause)
+    console.warn(`[dsh-token-pet] 保存 API Key 失败：${redactValue(cause)}`)
+    return { ok: false, status: store.getStatus(), error: message }
+  }
+}
+
+/** 清除应用内 Key。 */
+function clearCredential(): CredentialStatus {
+  try {
+    credentialStore?.clear()
+    console.log('[dsh-token-pet] 已清除应用内 API Key')
+  } catch (cause) {
+    console.warn(`[dsh-token-pet] 清除 API Key 失败：${redactValue(cause)}`)
+  }
+  return getCredentialStatus()
+}
+
+/** 打开「设置 API Key」浮层。已经开着就聚焦，而不是再开一个。 */
+function openKeyWindow(): void {
+  const existing = keyWindow
+  if (existing?.isAlive) {
+    existing.browserWindow.focus()
+    return
+  }
+  const pet = petWindow
+  if (!pet) return
+
+  const window = PopoverWindow.create({
+    mode: 'key',
+    width: KEY_WINDOW_WIDTH,
+    height: KEY_WINDOW_HEIGHT,
+    anchor: pet.getBounds(),
+    ...(process.env.DSH_PET_DEV_SERVER ? { devServerUrl: process.env.DSH_PET_DEV_SERVER } : {}),
+  })
+  keyWindow = window
+  window.browserWindow.once('closed', () => {
+    if (keyWindow === window) keyWindow = undefined
+  })
 }
 
 /** 关闭签筒窗口。 */
@@ -629,7 +747,7 @@ function restartPoller(intervalMs: number): void {
   poller.stop()
   poller = new BalancePoller({
     client: new BalanceClient({ endpoint: resolveEndpoint() }),
-    credentials: CredentialChain.default(credentialDirectory()),
+    credentials: createCredentialChain(),
     intervalMs,
     onState: (state: BalanceState) => window.send(EVENT_CHANNELS.balanceState, state),
     log: (message) => console.warn(message),

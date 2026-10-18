@@ -292,6 +292,36 @@ export interface FortuneSignal {
 }
 
 /* ------------------------------------------------------------------ *
+ * 应用内 API Key 设置
+ * ------------------------------------------------------------------ */
+
+/** 应用内保存的 Key 的状态。 */
+export interface CredentialStatus {
+  /** 是否已保存过 Key。 */
+  readonly hasKey: boolean
+  /**
+   * 系统加密是否可用（Windows 上是 DPAPI）。
+   *
+   * 为 false 时**不会**降级成明文保存——界面应提示用户改用环境变量。
+   */
+  readonly encryptionAvailable: boolean
+}
+
+/**
+ * 保存 Key 的结果。
+ *
+ * 用结果对象而不是抛异常：失败原因（系统不支持加密、写盘失败）需要原样
+ * 展示给用户，而跨进程抛出的异常会被包成
+ * `Error invoking remote method '...'` 这类没法直接给用户看的文本。
+ */
+export interface CredentialSaveResult {
+  readonly ok: boolean
+  readonly status: CredentialStatus
+  /** 失败原因，面向用户的中文说明。`ok` 为 true 时不存在。 */
+  readonly error?: string
+}
+
+/* ------------------------------------------------------------------ *
  * 运行时设置
  * ------------------------------------------------------------------ */
 

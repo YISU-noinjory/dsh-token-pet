@@ -102,6 +102,29 @@
       <button class="fortune-card__button" id="fortune-close" type="button">收下吉言</button>
     </div>
 
+    <!--
+      设置 API Key 表单。同样是 ?mode=key 切换（见 main.ts）。
+      打包版发给别人后没有环境变量可配，这是他们唯一的配置入口。
+    -->
+    <div class="key-card" id="key-card" role="dialog">
+      <h2 class="key-card__title">设置 DeepSeek API Key</h2>
+      <p class="key-card__hint">密钥经系统加密后保存在本机，不会上传到任何地方。</p>
+      <input
+        class="key-card__input"
+        id="key-input"
+        type="password"
+        placeholder="sk-..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <p class="key-card__status" id="key-status">读取中…</p>
+      <div class="key-card__actions">
+        <button class="key-card__button key-card__button--primary" id="key-save" type="button">保存</button>
+        <button class="key-card__button" id="key-clear" type="button">清除</button>
+        <button class="key-card__button" id="key-close" type="button">关闭</button>
+      </div>
+    </div>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

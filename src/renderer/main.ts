@@ -13,6 +13,7 @@ import { Pet } from './pet/pet'
 import { BalanceBadge } from './ui/balance-badge'
 import { bootstrapFortuneCard } from './ui/fortune-card'
 import { installFortuneTrigger } from './ui/fortune-trigger'
+import { bootstrapKeyForm } from './ui/key-form'
 import { PetImagePicker } from './ui/pet-image-picker'
 import { PetResizer } from './ui/pet-resizer'
 
@@ -42,8 +43,13 @@ function bootstrap(): void {
    * 必须**在查询任何宠物元素之前**分流，否则卡片窗口会因为找不到 `.pet-body`
    * 而抛错。
    */
-  if (new URLSearchParams(window.location.search).get('mode') === 'fortune') {
+  const mode = new URLSearchParams(window.location.search).get('mode')
+  if (mode === 'fortune') {
     bootstrapFortuneCard(bridge)
+    return
+  }
+  if (mode === 'key') {
+    bootstrapKeyForm(bridge)
     return
   }
 

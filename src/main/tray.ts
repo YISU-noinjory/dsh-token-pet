@@ -39,6 +39,8 @@ export interface PetTrayDeps {
    * 托盘不关心这件事。
    */
   readonly requestFortune: () => void
+  /** 打开「设置 API Key」浮层。 */
+  readonly openKeyWindow: () => void
   /** 退出应用。 */
   readonly quit: () => void
 }
@@ -87,7 +89,7 @@ export class PetTray {
    * 全局快捷键）。任何状态变化后调一次即可。
    */
   rebuildMenu(): void {
-    const { petWindow, getSettings, patchSettings, refreshBalance, requestFortune, quit } =
+    const { petWindow, getSettings, patchSettings, refreshBalance, requestFortune, openKeyWindow, quit } =
       this.#deps
     const settings = getSettings()
     const visible = petWindow.isVisible
@@ -118,6 +120,10 @@ export class PetTray {
       {
         label: '今日抽签',
         click: () => requestFortune(),
+      },
+      {
+        label: '设置 API Key…',
+        click: () => openKeyWindow(),
       },
       { type: 'separator' },
       {

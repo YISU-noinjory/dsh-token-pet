@@ -14,6 +14,8 @@ import { ipcMain } from 'electron'
 import { INVOKE_CHANNELS } from '../shared/ipc'
 import type {
   BalanceState,
+  CredentialSaveResult,
+  CredentialStatus,
   FortuneReading,
   PetImageSelectResult,
   PetImageView,
@@ -52,6 +54,12 @@ export interface IpcHandlersDeps {
   readonly getFortune: () => FortuneReading | null
   /** 关闭签筒窗口。 */
   readonly closeFortune: () => void
+  /** 读应用内 Key 状态。 */
+  readonly getCredentialStatus: () => CredentialStatus
+  /** 加密保存应用内 Key；返回结果对象而不是抛异常，好让界面展示原因。 */
+  readonly saveCredential: (key: string) => CredentialSaveResult
+  /** 清除应用内 Key。 */
+  readonly clearCredential: () => CredentialStatus
   /** 请求退出应用。 */
   readonly quit: () => void
 }
@@ -75,6 +83,9 @@ export function registerIpcHandlers(deps: IpcHandlersDeps): () => void {
     drawFortune,
     getFortune,
     closeFortune,
+    getCredentialStatus,
+    saveCredential,
+    clearCredential,
     quit,
   } = deps
 
@@ -161,6 +172,23 @@ export function registerIpcHandlers(deps: IpcHandlersDeps): () => void {
   ipcMain.handle(INVOKE_CHANNELS.fortuneClose, (): void => {
     closeFortune()
   })
+
+  ipcMain.handle(
+    INVOKE_CHANNELS.credentialStatus,
+    (): CredentialStatus => getCredentialStatus(),
+  )
+
+  ipcMain.handle(
+    INVOKE_CHANNELS.credentialSet,
+    (_event, raw: unknown): CredentialSaveResult => {
+      // 只接受字符串。长度上限是防御性的：正常 Key 不过几百字符，
+      // 一次塞进几 MB 只会白写盘。
+      const key = typeof raw === 'string' ? raw.slice(0, 4096) : ''
+      return saveCredential(key)
+    },
+  )
+
+  ipcMain.handle(INVOKE_CHANNELS.credentialClear, (): CredentialStatus => clearCredential())
 
   ipcMain.handle(INVOKE_CHANNELS.quit, (): void => {
     quit()

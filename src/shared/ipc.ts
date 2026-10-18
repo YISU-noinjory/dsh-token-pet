@@ -11,6 +11,8 @@
 
 import type {
   BalanceState,
+  CredentialSaveResult,
+  CredentialStatus,
   FortuneReading,
   FortuneSignal,
   MotionFrame,
@@ -67,6 +69,12 @@ export const INVOKE_CHANNELS = {
   fortuneCurrent: 'fortune:current',
   /** 关闭签筒窗口。 */
   fortuneClose: 'fortune:close',
+  /** 读应用内 Key 的状态（是否已保存、系统加密是否可用）。 */
+  credentialStatus: 'credential:status',
+  /** 保存应用内 Key（加密落盘）。 */
+  credentialSet: 'credential:set',
+  /** 清除应用内 Key。 */
+  credentialClear: 'credential:clear',
   /** 退出应用。 */
   quit: 'app:quit',
 } as const
@@ -212,6 +220,25 @@ export interface PetBridge {
     current(): Promise<FortuneReading | null>
     /** 关闭签筒窗口。 */
     close(): Promise<void>
+  }
+  /**
+   * 应用内 API Key 设置。
+   *
+   * 打包版发给别人后没有环境变量可配，这是他们唯一的配置入口。
+   * Key 用 `safeStorage` 加密保存（Windows 走 DPAPI），**不会**明文落盘。
+   */
+  readonly credential: {
+    /** 读状态。 */
+    status(): Promise<CredentialStatus>
+    /**
+     * 保存 Key。
+     *
+     * @param key - Key 明文。空字符串会被主进程拒绝。
+     * @returns 结果对象；失败时 `ok` 为 false 并附带原因。
+     */
+    set(key: string): Promise<CredentialSaveResult>
+    /** 清除已保存的 Key。 */
+    clear(): Promise<CredentialStatus>
   }
   readonly app: {
     quit(): Promise<void>
