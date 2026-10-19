@@ -27,6 +27,8 @@
  */
 
 import type { PetBridge } from '../../shared/ipc'
+// 内置的默认宠物图。没有自定义图片时用它，而不是退回 CSS 软糖。
+import defaultPetUrl from '../assets/default-pet.png'
 import type { MattingOutcomeKind, PetImageView } from '../../shared/types'
 
 /** 提示气泡的显示时长（ms）。 */
@@ -80,6 +82,12 @@ export class PetImagePicker {
     this.#options.pickButton.addEventListener('click', this.#onPick)
     this.#options.resetButton.addEventListener('click', this.#onReset)
 
+    // 图片加载失败（内置图丢失、自定义文件被手工删掉）时退回 CSS 宠物。
+    // 不做兜底的话用户看到的是一只完全空白的宠物，比换了个样子糟糕得多。
+    this.#options.image.addEventListener('error', () => {
+      this.#options.stage.dataset.hasPhoto = 'false'
+    })
+
     try {
       // 主进程在创建窗口**之前**就把磁盘状态读回来了，
       // 所以这里的 get() 是同步语义的快照，不会出现"先默认后图片"的闪烁。
@@ -110,20 +118,20 @@ export class PetImagePicker {
   apply(view: PetImageView): void {
     const { stage, image, resetButton } = this.#options
 
+    // 没有自定义图片时用**内置默认图**，而不是退回 CSS 软糖：
+    // 默认宠物就是打包进来的那张画，用户看到的第一眼才是产品该有的样子。
+    const url = view.url ?? defaultPetUrl
+
     // 用 data 属性而不是直接改 style：切图/切裁剪方式都只是换一个选择器匹配，
     // 具体长什么样完全留在样式表里。
-    stage.dataset.hasPhoto = view.hasImage ? 'true' : 'false'
+    // 这里的 hasPhoto 恒为 true——任何情况下都有一张图可显示。
+    stage.dataset.hasPhoto = 'true'
     stage.dataset.clip = view.clip
 
-    if (view.url) {
-      // 只在 URL 变化时赋值。重复赋同一个 src 会让 Chromium
-      // 取消并重发请求，动图会因此从头开始播。
-      if (image.getAttribute('src') !== view.url) image.src = view.url
-      image.alt = view.fileName ?? '自定义宠物图片'
-    } else {
-      image.removeAttribute('src')
-      image.alt = ''
-    }
+    // 只在 URL 变化时赋值。重复赋同一个 src 会让 Chromium
+    // 取消并重发请求，动图会因此从头开始播。
+    if (image.getAttribute('src') !== url) image.src = url
+    image.alt = view.fileName ?? '宠物'
 
     resetButton.disabled = !view.hasImage
   }
